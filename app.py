@@ -1216,13 +1216,14 @@ def get_frontend_html() -> str:
         }
 
         /* Timeline */
-        .timeline { padding: 0.5rem 0.75rem; }
+        .timeline { padding: 0.5rem 0.75rem; position: relative; }
         .tl-item {
             display: flex; gap: 0.625rem;
-            padding: 0.5rem 0;
+            padding: 0.5rem 0.375rem;
             cursor: pointer;
             border-radius: var(--radius);
             transition: background 0.1s;
+            position: relative;
         }
         .tl-item:hover { background: var(--bg-tertiary); }
         .tl-item.active { background: var(--accent-subtle); }
@@ -1254,6 +1255,44 @@ def get_frontend_html() -> str:
             display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
         }
 
+        /* Timeline hover preview */
+        .tl-preview {
+            position: fixed;
+            left: 248px;
+            width: 300px;
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-lg);
+            padding: 0.875rem;
+            box-shadow: 0 8px 24px rgba(0,0,0,0.4), 0 0 0 1px rgba(255,255,255,0.03);
+            z-index: 200;
+            pointer-events: none;
+            opacity: 0;
+            transform: translateX(-4px);
+            transition: opacity 0.15s ease, transform 0.15s ease;
+        }
+        .tl-preview.visible {
+            opacity: 1;
+            transform: translateX(0);
+        }
+        .tl-preview-tag {
+            font-size: 0.5625rem; font-weight: 600; text-transform: uppercase;
+            padding: 2px 6px; border-radius: 3px; display: inline-block; margin-bottom: 0.375rem;
+        }
+        .tl-preview-tag.jira { background: var(--accent-subtle); color: var(--accent); }
+        .tl-preview-tag.slack { background: var(--green-subtle); color: var(--green); }
+        .tl-preview-title {
+            font-size: 0.8125rem; font-weight: 600; color: var(--text-primary);
+            margin-bottom: 0.25rem; line-height: 1.3;
+        }
+        .tl-preview-meta {
+            font-size: 0.6875rem; color: var(--text-muted); margin-bottom: 0.5rem;
+        }
+        .tl-preview-body {
+            font-size: 0.75rem; color: var(--text-secondary); line-height: 1.5;
+            max-height: 120px; overflow: hidden;
+        }
+
         /* Center: Chat */
         .chat-panel {
             display: flex; flex-direction: column;
@@ -1262,11 +1301,15 @@ def get_frontend_html() -> str:
         .chat-scroll {
             flex: 1; overflow-y: auto;
             padding: 1.25rem 1.5rem;
+            display: flex; flex-direction: column;
         }
+        .chat-scroll .welcome { flex: 1; }
+        #chatMessages { flex: 1; }
         .chat-input-area {
-            padding: 0.75rem 1.5rem;
+            padding: 0.625rem 1.5rem;
             border-top: 1px solid var(--border);
             background: var(--bg-secondary);
+            flex-shrink: 0;
         }
         .chat-input-row {
             display: flex; gap: 0.5rem;
@@ -1480,12 +1523,10 @@ def get_frontend_html() -> str:
         <div class="panel">
             <div class="panel-header">
                 <span class="panel-title">Knowledge Graph</span>
-                <span id="graphSourceLabel" style="font-size:0.5625rem;color:var(--text-muted);">qdrant</span>
+                <span style="font-size:0.5625rem;color:var(--text-muted);">cognee</span>
             </div>
             <div class="graph-wrap">
                 <div class="graph-bar">
-                    <button id="graphSrcQdrant" class="active" onclick="switchGraphSource('qdrant')">Qdrant</button>
-                    <button id="graphSrcCognee" onclick="switchGraphSource('cognee')">Cognee</button>
                     <button id="btnCogneeIngest" class="build-btn" onclick="runCogneeIngest()">Build KG</button>
                 </div>
                 <div class="graph-ctrl">
@@ -1508,7 +1549,12 @@ def get_frontend_html() -> str:
             </div>
         </div>
     </main>
-    
+    <div class="tl-preview" id="tlPreview">
+        <div class="tl-preview-tag" id="tlPreviewTag"></div>
+        <div class="tl-preview-title" id="tlPreviewTitle"></div>
+        <div class="tl-preview-meta" id="tlPreviewMeta"></div>
+        <div class="tl-preview-body" id="tlPreviewBody"></div>
+    </div>
     <script>
         let currentFeatureId = null;
         let graphSimulation = null;
@@ -1516,10 +1562,10 @@ def get_frontend_html() -> str:
         let graphSvgGroup = null;
         let lastQuestion = '';
         let lastAnswer = '';
-        let graphSource = 'qdrant';
+        let graphSource = 'cognee';
         let turnCount = 0;
+        let timelineData = [];
 
-        // Configure marked for safe rendering
         marked.setOptions({ breaks: true, gfm: true });
 
         document.addEventListener('DOMContentLoaded', () => {
@@ -1557,21 +1603,13 @@ def get_frontend_html() -> str:
 
         function setQuery(q) { document.getElementById('searchInput').value = q; askQuestion(); }
 
-        function switchGraphSource(s) {
-            graphSource = s;
-            document.getElementById('graphSrcQdrant').classList.toggle('active', s === 'qdrant');
-            document.getElementById('graphSrcCognee').classList.toggle('active', s === 'cognee');
-            document.getElementById('graphSourceLabel').textContent = s;
-            loadGraph(lastQuestion || null);
-        }
-
         async function runCogneeIngest() {
             const btn = document.getElementById('btnCogneeIngest');
             const orig = btn.textContent;
             btn.textContent = 'Building...'; btn.disabled = true; btn.style.opacity = '0.5';
             try {
                 const r = await fetch('/api/cognee/ingest', {method:'POST'});
-                if (r.ok) { btn.textContent = 'Done'; switchGraphSource('cognee'); }
+                if (r.ok) { btn.textContent = 'Done'; loadGraph(lastQuestion || null); }
                 else { btn.textContent = 'Error'; }
             } catch { btn.textContent = 'Error'; }
             finally { setTimeout(() => { btn.textContent = orig; btn.disabled = false; btn.style.opacity = '1'; }, 3000); }
@@ -1687,10 +1725,11 @@ def get_frontend_html() -> str:
                 if (currentFeatureId) p.append('feature_id', currentFeatureId);
                 const res = await fetch('/api/timeline?' + p);
                 const data = await res.json();
+                timelineData = data.events || [];
                 document.getElementById('timelineLoading').style.display = 'none';
-                if (!data.events.length) { c.innerHTML = '<div class="loading">No events yet.</div>'; return; }
-                c.innerHTML = data.events.map(e => 
-                    '<div class="tl-item" data-id="' + e.id + '">' +
+                if (!timelineData.length) { c.innerHTML = '<div class="loading">No events yet.</div>'; return; }
+                c.innerHTML = timelineData.map((e, i) =>
+                    '<div class="tl-item" data-id="' + e.id + '" data-idx="' + i + '">' +
                     '<div class="tl-pip ' + e.type + '"></div>' +
                     '<div class="tl-body">' +
                     '<div class="tl-date">' + fmt(e.timestamp) + '</div>' +
@@ -1698,10 +1737,49 @@ def get_frontend_html() -> str:
                     '<div class="tl-text">' + (e.title||e.text) + '</div>' +
                     '</div></div>'
                 ).join('');
+                // Attach hover preview listeners
+                c.querySelectorAll('.tl-item').forEach(el => {
+                    el.addEventListener('mouseenter', showTlPreview);
+                    el.addEventListener('mousemove', moveTlPreview);
+                    el.addEventListener('mouseleave', hideTlPreview);
+                });
             } catch (err) {
                 document.getElementById('timelineLoading').style.display = 'none';
                 c.innerHTML = '<div class="loading">Error loading timeline.</div>';
             }
+        }
+
+        function showTlPreview(ev) {
+            const idx = parseInt(ev.currentTarget.dataset.idx);
+            const e = timelineData[idx];
+            if (!e) return;
+            const preview = document.getElementById('tlPreview');
+            const tag = document.getElementById('tlPreviewTag');
+            const title = document.getElementById('tlPreviewTitle');
+            const meta = document.getElementById('tlPreviewMeta');
+            const body = document.getElementById('tlPreviewBody');
+
+            tag.className = 'tl-preview-tag ' + e.type;
+            tag.textContent = e.type === 'jira' ? (e.source_id || 'JIRA') : '#' + (e.channel || 'slack');
+            title.textContent = e.title || e.text || '';
+            meta.textContent = (e.user ? e.user + ' · ' : '') + fmt(e.timestamp) + (e.status ? ' · ' + e.status : '');
+            body.textContent = e.text || e.title || '';
+
+            const rect = ev.currentTarget.getBoundingClientRect();
+            const y = Math.min(rect.top, window.innerHeight - 220);
+            preview.style.top = Math.max(8, y) + 'px';
+            preview.classList.add('visible');
+        }
+
+        function moveTlPreview(ev) {
+            const rect = ev.currentTarget.getBoundingClientRect();
+            const preview = document.getElementById('tlPreview');
+            const y = Math.min(rect.top, window.innerHeight - 220);
+            preview.style.top = Math.max(8, y) + 'px';
+        }
+
+        function hideTlPreview() {
+            document.getElementById('tlPreview').classList.remove('visible');
         }
 
         // --- Graph ---
@@ -1725,13 +1803,10 @@ def get_frontend_html() -> str:
             const {width, height} = svg.node().getBoundingClientRect();
             svg.selectAll('*').remove();
             try {
-                const url = graphSource === 'cognee' ? '/api/cognee/graph' : '/api/graph';
-                const p = new URLSearchParams();
-                if (graphSource !== 'cognee') { if (currentFeatureId) p.append('feature_id', currentFeatureId); if (query) p.append('q', query); }
-                const data = await (await fetch(url + '?' + p)).json();
+                const data = await (await fetch('/api/cognee/graph')).json();
                 if (!data.nodes?.length) {
                     svg.append('text').attr('x',width/2).attr('y',height/2).attr('text-anchor','middle').attr('fill','#52525b').attr('font-size','12px')
-                       .text(graphSource==='cognee'?'Click "Build KG" to generate graph':'No graph data');
+                       .text('Click "Build KG" to generate graph');
                     return;
                 }
                 const n = data.nodes.length;

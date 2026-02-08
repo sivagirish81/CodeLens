@@ -6,6 +6,21 @@
   },
   "jira_tickets": [
     {
+      "id": "JIRA-998",
+      "type": "Bug",
+      "title": "Client-Side Reranking Causes Latency Spikes on Large Result Sets",
+      "created_at": "2026-01-29T14:15:00Z",
+      "updated_at": "2026-02-01T11:00:00Z",
+      "description": "When hybrid search returns >50 results, client-side reranking adds 200-400ms of latency. Users on the free tier are reporting timeouts. We need server-side score control to eliminate this bottleneck.",
+      "acceptance_criteria": [
+        "Identify root cause of latency in reranking pipeline",
+        "Propose server-side alternative to client reranking",
+        "Benchmark latency improvement with proposed fix"
+      ],
+      "status": "Done",
+      "references": []
+    },
+    {
       "id": "JIRA-1001",
       "type": "Story",
       "title": "Implement Hybrid Query Score Boosting",
@@ -27,7 +42,7 @@
       "id": "JIRA-1002",
       "type": "Task",
       "title": "Add Documentation and Examples for Hybrid Score Boosting",
-      "created_at": "2026-02-03T15:20:00Z",
+      "created_at": "2026-02-04T09:05:00Z",
       "updated_at": "2026-02-06T14:10:00Z",
       "description": "Document how score boosting works in Qdrant hybrid queries, including examples that clearly demonstrate how boosting affects ranking and relevance.",
       "acceptance_criteria": [
@@ -53,12 +68,37 @@
         "Visually reorder results as boosts change"
       ],
       "status": "To Do"
+    },
+    {
+      "id": "JIRA-1004",
+      "type": "Bug",
+      "title": "Boosted Scores Not Deterministic When Using RRF Fusion",
+      "created_at": "2026-02-06T10:45:00Z",
+      "updated_at": "2026-02-07T08:20:00Z",
+      "description": "When using Reciprocal Rank Fusion with boosted prefetch queries, the final ranking occasionally differs between identical requests. Suspected race condition in score aggregation.",
+      "acceptance_criteria": [
+        "Reproduce non-deterministic ranking with test case",
+        "Fix race condition in fusion score aggregation",
+        "Add regression test ensuring identical queries return identical rankings"
+      ],
+      "status": "In Progress",
+      "references": []
     }
   ],
   "slack_conversations": [
     {
       "channel": "#search-platform",
       "messages": [
+        {
+          "timestamp": "2026-01-30T09:45:00Z",
+          "user": "dev_alex",
+          "message": "Looked into JIRA-998 — the reranking latency is brutal on large result sets. We're pulling 100 docs, computing custom scores in Python, then re-sorting. This should be happening server-side in Qdrant."
+        },
+        {
+          "timestamp": "2026-01-30T10:12:00Z",
+          "user": "pm_sam",
+          "message": "We've had 3 enterprise customers ask for this in the last month. They want to weight title matches higher than body matches, but right now there's no clean way to do that without the client-side hack."
+        },
         {
           "timestamp": "2026-02-03T09:02:00Z",
           "user": "dev_alex",
@@ -70,19 +110,24 @@
           "message": "This came up a lot in user feedback. People liked hybrid search, but wanted something closer to classic search engines where some fields clearly matter more."
         },
         {
-          "timestamp": "2026-02-03T11:45:00Z",
+          "timestamp": "2026-02-03T14:30:00Z",
           "user": "dev_alex",
-          "message": "Yep — historically Qdrant fused dense and sparse signals, but there wasn't a clean way to boost titles, keywords, or semantic similarity without extra reranking logic."
+          "message": "Historically Qdrant fused dense and sparse signals evenly, but there wasn't a clean way to boost titles, keywords, or semantic similarity without extra reranking logic. That changes now."
         },
         {
           "timestamp": "2026-02-04T10:30:00Z",
           "user": "qa_lee",
-          "message": "Ran early tests on boosted hybrid queries. Changing weights clearly shifts rankings, and results feel way more intuitive now."
+          "message": "Ran early tests on boosted hybrid queries. Changing weights clearly shifts rankings, and results feel way more intuitive now. Latency dropped from ~350ms to ~40ms by removing client reranking."
         },
         {
           "timestamp": "2026-02-05T16:55:00Z",
           "user": "dev_alex",
           "message": "This is going to be great for demos. Showing the same query with and without boosting instantly explains why certain results move up."
+        },
+        {
+          "timestamp": "2026-02-06T14:20:00Z",
+          "user": "qa_lee",
+          "message": "Found a non-determinism issue with RRF fusion + boosting — filed JIRA-1004. Same query sometimes returns slightly different orderings. Might be a race condition."
         },
         {
           "timestamp": "2026-02-07T10:14:00Z",
